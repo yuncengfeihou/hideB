@@ -74,109 +74,171 @@ function getCurrentEntityId() {
 
 // 运行数据迁移 (从旧位置到新的全局位置)
 function runMigration() {
-    console.log(`[${extensionName}] Starting settings migration...`);
+    console.log(`[${extensionName}] === 开始设置迁移过程 ===`); // 中文日志
     let migratedCount = 0;
     // 确保容器存在
     extension_settings[extensionName].settings_by_entity = extension_settings[extensionName].settings_by_entity || {};
     const settingsContainer = extension_settings[extensionName].settings_by_entity;
+    console.log(`[${extensionName}] 目标设置容器已初始化/找到。`); // 中文日志
 
     // --- 迁移角色数据 ---
+    console.log(`[${extensionName}] --- 开始角色设置迁移 ---`); // 中文日志
     // 检查全局 characters 数组是否可用
     if (typeof characters !== 'undefined' && Array.isArray(characters)) {
-        console.log(`[${extensionName}] Migrating character settings... Found ${characters.length} characters.`);
+        console.log(`[${extensionName}] 全局 'characters' 数组已找到。角色数量: ${characters.length}。`); // 中文日志
         characters.forEach((character, index) => {
+            console.log(`[${extensionName}] 处理角色 #${index}: ${character ? character.name : '不可用'}`); // 中文日志 (N/A -> 不可用)
+            if (!character || !character.data || !character.data.extensions) {
+                console.log(`[${extensionName}]   跳过角色 #${index}: 缺少角色对象、data 或 extensions 属性。`); // 中文日志
+                return; // 跳过此角色
+            }
+
             try {
                 // 检查旧的设置路径
-                const oldSettings = character?.data?.extensions?.hideHelperSettings;
+                const oldSettingsPath = 'character.data.extensions.hideHelperSettings';
+                console.log(`[${extensionName}]   尝试访问旧设置路径: ${oldSettingsPath}`); // 中文日志
+                const oldSettings = character.data.extensions.hideHelperSettings;
+
                 if (oldSettings && typeof oldSettings === 'object' && oldSettings !== null) {
+                    // Log 找到了旧设置对象
+                    console.log(`[${extensionName}]   成功: 在 ${oldSettingsPath} 找到旧设置对象。内容:`, JSON.stringify(oldSettings)); // 中文日志
+
                     // 验证旧数据是否包含有效字段
-                    if (typeof oldSettings.hideLastN === 'number' || typeof oldSettings.lastProcessedLength === 'number' || oldSettings.userConfigured === true) {
+                    const hasHideLastN = typeof oldSettings.hideLastN === 'number';
+                    const hasLastProcessedLength = typeof oldSettings.lastProcessedLength === 'number';
+                    const isUserConfigured = oldSettings.userConfigured === true;
+                    const isValidOldData = hasHideLastN || hasLastProcessedLength || isUserConfigured;
+
+                    console.log(`[${extensionName}]   验证旧设置数据: hasHideLastN=${hasHideLastN}, hasLastProcessedLength=${hasLastProcessedLength}, isUserConfigured=${isUserConfigured}. 是否有效: ${isValidOldData}`); // 中文日志
+
+                    if (isValidOldData) {
                         const avatarFileName = character.avatar;
+                        console.log(`[${extensionName}]   角色头像文件名: ${avatarFileName || '缺失'}`); // 中文日志 (MISSING -> 缺失)
+
                         if (avatarFileName) {
                             const entityId = `character-${avatarFileName}`;
+                            console.log(`[${extensionName}]   生成的 entityId: ${entityId}`); // 中文日志
                             // **重要：仅当新位置没有数据时才迁移**，避免覆盖用户在新版本中设置的值
                             if (!settingsContainer.hasOwnProperty(entityId)) {
-                                console.log(`[${extensionName}] Migrating settings for character: ${character.name} (Avatar: ${avatarFileName}) from old location.`);
+                                console.log(`[${extensionName}]   操作: 正在迁移 entityId '${entityId}' 的设置，因为它在新位置不存在。`); // 中文日志
                                 settingsContainer[entityId] = { ...oldSettings }; // 复制对象
                                 migratedCount++;
+                                console.log(`[${extensionName}]   entityId '${entityId}' 迁移成功。计数器增加到 ${migratedCount}。`); // 中文日志
                                 // 注意：不在此处清理旧数据
                             } else {
-                                console.log(`[${extensionName}] Skipping migration for character ${character.name}: data already exists in new location (entityId: ${entityId}).`);
+                                console.log(`[${extensionName}]   跳过迁移: 新位置已存在 entityId '${entityId}' 的数据。正在跳过。`); // 中文日志
                             }
                         } else {
-                             console.warn(`[${extensionName}] Cannot migrate settings for character at index ${index} (Name: ${character.name}): Missing avatar filename.`);
+                             console.warn(`[${extensionName}]   跳过迁移: 无法迁移角色 ${character.name || '不可用'} 的设置: 缺少头像文件名。无法生成唯一的 entityId。`); // 中文日志 (N/A -> 不可用)
                         }
                     } else {
-                         console.warn(`[${extensionName}] Skipping migration for character ${character.name}: Old settings data at .data.extensions.hideHelperSettings is invalid or empty.`, oldSettings);
+                         console.warn(`[${extensionName}]   跳过迁移: 跳过角色 ${character.name || '不可用'} 的迁移: 路径 ${oldSettingsPath} 的旧设置数据无效或为空 (不包含预期字段)。找到的数据:`, JSON.stringify(oldSettings)); // 中文日志 (N/A -> 不可用)
                          // 可选地删除无效的旧数据
                          // delete character.data.extensions.hideHelperSettings;
                          // 需要API调用保存
                     }
+                } else {
+                    // Log 未找到旧设置对象
+                     console.log(`[${extensionName}]   信息: 在 ${oldSettingsPath} 未找到旧设置对象。此角色无需迁移。`); // 中文日志
                 }
             } catch (charError) {
-                 console.error(`[${extensionName}] Error migrating settings for character at index ${index} (Name: ${character.name}):`, charError);
+                 console.error(`[${extensionName}]   错误: 迁移索引 ${index} (名称: ${character.name || '不可用'}) 的角色设置时出错:`, charError); // 中文日志 (N/A -> 不可用)
             }
+             console.log(`[${extensionName}] 完成处理角色 #${index}。`); // 中文日志
         });
+         console.log(`[${extensionName}] --- 完成角色设置迁移 ---`); // 中文日志
     } else {
-         console.warn(`[${extensionName}] Cannot migrate character settings: Global 'characters' array not available or not an array. Migration might be incomplete if relying on this.`);
+         console.warn(`[${extensionName}] 无法迁移角色设置: 全局 'characters' 数组不可用或不是数组。如果依赖此数组，迁移可能不完整。`); // 中文日志
          // 在这里可以添加 Plan B: fetch('/api/characters/all') 并处理 Promise
          // alert("无法自动迁移角色隐藏设置，需要手动配置。"); // 或者通知用户
     }
 
     // --- 迁移群组数据 ---
+    console.log(`[${extensionName}] --- 开始群组设置迁移 ---`); // 中文日志
     // 检查全局 groups 数组是否可用
     if (typeof groups !== 'undefined' && Array.isArray(groups)) {
-        console.log(`[${extensionName}] Migrating group settings... Found ${groups.length} groups.`);
+        console.log(`[${extensionName}] 全局 'groups' 数组已找到。群组数量: ${groups.length}。`); // 中文日志
         groups.forEach((group, index) => {
+            console.log(`[${extensionName}] 处理群组 #${index}: ${group ? group.name : '不可用'} (ID: ${group ? group.id : '不可用'})`); // 中文日志 (N/A -> 不可用)
+             if (!group || !group.data) {
+                console.log(`[${extensionName}]   跳过群组 #${index}: 缺少群组对象或 data 属性。`); // 中文日志
+                return; // 跳过此群组
+            }
+
             try {
                 // 检查旧的设置路径
-                const oldSettings = group?.data?.hideHelperSettings;
+                const oldSettingsPath = 'group.data.hideHelperSettings';
+                console.log(`[${extensionName}]   尝试访问旧设置路径: ${oldSettingsPath}`); // 中文日志
+                const oldSettings = group.data.hideHelperSettings;
+
                 if (oldSettings && typeof oldSettings === 'object' && oldSettings !== null) {
-                    if (typeof oldSettings.hideLastN === 'number' || typeof oldSettings.lastProcessedLength === 'number' || oldSettings.userConfigured === true) {
+                     // Log 找到了旧设置对象
+                    console.log(`[${extensionName}]   成功: 在 ${oldSettingsPath} 找到旧设置对象。内容:`, JSON.stringify(oldSettings)); // 中文日志
+
+                    // 验证旧数据是否包含有效字段
+                    const hasHideLastN = typeof oldSettings.hideLastN === 'number';
+                    const hasLastProcessedLength = typeof oldSettings.lastProcessedLength === 'number';
+                    const isUserConfigured = oldSettings.userConfigured === true;
+                    const isValidOldData = hasHideLastN || hasLastProcessedLength || isUserConfigured;
+
+                    console.log(`[${extensionName}]   验证旧设置数据: hasHideLastN=${hasHideLastN}, hasLastProcessedLength=${hasLastProcessedLength}, isUserConfigured=${isUserConfigured}. 是否有效: ${isValidOldData}`); // 中文日志
+
+                    if (isValidOldData) {
                         const groupId = group.id;
+                         console.log(`[${extensionName}]   群组 ID: ${groupId || '缺失'}`); // 中文日志 (MISSING -> 缺失)
+
                         if (groupId) {
                             const entityId = `group-${groupId}`;
+                             console.log(`[${extensionName}]   生成的 entityId: ${entityId}`); // 中文日志
                             // **重要：仅当新位置没有数据时才迁移**
                             if (!settingsContainer.hasOwnProperty(entityId)) {
-                                console.log(`[${extensionName}] Migrating settings for group: ${group.name} (ID: ${groupId}) from old location.`);
+                                console.log(`[${extensionName}]   操作: 正在迁移 entityId '${entityId}' 的设置，因为它在新位置不存在。`); // 中文日志
                                 settingsContainer[entityId] = { ...oldSettings };
                                 migratedCount++;
+                                console.log(`[${extensionName}]   entityId '${entityId}' 迁移成功。计数器增加到 ${migratedCount}。`); // 中文日志
                                 // 注意：不在此处清理旧数据
                             } else {
-                                console.log(`[${extensionName}] Skipping migration for group ${group.name}: data already exists in new location (entityId: ${entityId}).`);
+                                console.log(`[${extensionName}]   跳过迁移: 新位置已存在 entityId '${entityId}' 的数据。正在跳过。`); // 中文日志
                             }
                         } else {
-                            console.warn(`[${extensionName}] Cannot migrate settings for group at index ${index} (Name: ${group.name}): Missing group ID.`);
+                            console.warn(`[${extensionName}]   跳过迁移: 无法迁移索引 ${index} (名称: ${group.name || '不可用'}) 的群组设置: 缺少群组 ID。无法生成唯一的 entityId。`); // 中文日志 (N/A -> 不可用)
                         }
                     } else {
-                        console.warn(`[${extensionName}] Skipping migration for group ${group.name}: Old settings data at .data.hideHelperSettings is invalid or empty.`, oldSettings);
+                        console.warn(`[${extensionName}]   跳过迁移: 跳过群组 ${group.name || '不可用'} 的迁移: 路径 ${oldSettingsPath} 的旧设置数据无效或为空 (不包含预期字段)。找到的数据:`, JSON.stringify(oldSettings)); // 中文日志 (N/A -> 不可用)
                         // delete group.data.hideHelperSettings;
                         // 需要API调用保存
                     }
+                } else {
+                     // Log 未找到旧设置对象
+                    console.log(`[${extensionName}]   信息: 在 ${oldSettingsPath} 未找到旧设置对象。此群组无需迁移。`); // 中文日志
                 }
             } catch (groupError) {
-                console.error(`[${extensionName}] Error migrating settings for group at index ${index} (Name: ${group.name}):`, groupError);
+                console.error(`[${extensionName}]   错误: 迁移索引 ${index} (名称: ${group.name || '不可用'}) 的群组设置时出错:`, groupError); // 中文日志 (N/A -> 不可用)
             }
+             console.log(`[${extensionName}] 完成处理群组 #${index}。`); // 中文日志
         });
+         console.log(`[${extensionName}] --- 完成群组设置迁移 ---`); // 中文日志
     } else {
-        console.warn(`[${extensionName}] Cannot migrate group settings: Global 'groups' array not available or not an array. Migration might be incomplete if relying on this.`);
+        console.warn(`[${extensionName}] 无法迁移群组设置: 全局 'groups' 数组不可用或不是数组。如果依赖此数组，迁移可能不完整。`); // 中文日志
         // 在这里可以添加 Plan B: fetch('/api/groups/all') 并处理 Promise
         // alert("无法自动迁移群组隐藏设置，需要手动配置。");
     }
 
     // --- 完成迁移 ---
+     console.log(`[${extensionName}] === 结束迁移过程 ===`); // 中文日志
     if (migratedCount > 0) {
-         console.log(`[${extensionName}] Migration finished. Migrated settings for ${migratedCount} entities to the new global location.`);
+         console.log(`[${extensionName}] 迁移完成。成功将 ${migratedCount} 个实体的设置迁移到新的全局位置。`); // 中文日志
     } else {
-         console.log(`[${extensionName}] Migration finished. No settings needed migration or no old settings found.`);
+         console.log(`[${extensionName}] 迁移完成。无需迁移设置，未找到旧设置，或目标位置已有数据。`); // 中文日志
     }
 
     // 无论是否迁移了数据，都将标志设置为 true，表示迁移过程已执行
     extension_settings[extensionName].migration_v1_complete = true;
-    console.log(`[${extensionName}] Setting migration_v1_complete flag to true.`);
+    console.log(`[${extensionName}] 将 migration_v1_complete 标志设置为 true。`); // 中文日志
     // 保存包含潜在迁移数据和完成标志的全局设置
     saveSettingsDebounced();
-    console.log(`[${extensionName}] Called saveSettingsDebounced() after migration attempt.`);
+    console.log(`[${extensionName}] 已调用 saveSettingsDebounced() 来持久化迁移标志和任何已迁移的数据。`); // 中文日志
+    console.log(`[${extensionName}] === 迁移过程完毕 ===`); // 中文日志
 }
 
 
